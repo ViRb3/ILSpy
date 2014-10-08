@@ -160,7 +160,14 @@ namespace ICSharpCode.Decompiler.Ast
 				RunTransformations();
 			
 			syntaxTree.AcceptVisitor(new InsertParenthesesVisitor { InsertParenthesesForReadability = true });
-			var outputFormatter = new TextOutputFormatter(output) { FoldBraces = context.Settings.FoldBraces };
+            //wicky.patch.start: change to RTF output
+            //var outputFormatter = new TextOutputFormatter(output) { FoldBraces = context.Settings.FoldBraces };
+            IOutputFormatter outputFormatter;
+            if (output is RtfTextOutput)
+                outputFormatter = new RtfOutputFormatter((RtfTextOutput)output) { FoldBraces = context.Settings.FoldBraces };
+            else
+                outputFormatter = new TextOutputFormatter(output) { FoldBraces = context.Settings.FoldBraces };
+            //wicky.patch.end
 			var formattingPolicy = context.Settings.CSharpFormattingOptions;
 			syntaxTree.AcceptVisitor(new CSharpOutputVisitor(outputFormatter, formattingPolicy));
 		}

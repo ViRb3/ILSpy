@@ -59,6 +59,7 @@
     <Compile Include="Ast\DecompilerContext.cs" />
     <Compile Include="Ast\NameVariables.cs" />
     <Compile Include="Ast\NRefactoryExtensions.cs" />
+    <Compile Include="Ast\RtfOutputFormatter.cs" />
     <Compile Include="Ast\TextOutputFormatter.cs" />
     <Compile Include="Ast\Transforms\AddCheckedBlocks.cs" />
     <Compile Include="Ast\Transforms\CombineQueryExpressions.cs" />
@@ -123,6 +124,7 @@
     <Compile Include="PlainTextOutput.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ReferenceResolvingException.cs" />
+    <Compile Include="RtfTextOutput.cs" />
     <Compile Include="TextOutputWriter.cs" />
     <None Include="Properties\AssemblyInfo.template.cs" />
   </ItemGroup>
