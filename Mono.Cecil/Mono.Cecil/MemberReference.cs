@@ -29,6 +29,14 @@
 namespace Mono.Cecil {
 
 	public abstract class MemberReference : IMetadataTokenProvider {
+	
+        //wicky.patch.start: add OriginalName support
+        public string OriginalName;
+        public string OriginalNamespace;
+        public string OriginalFullTypeName;
+        public object Tag;
+        public bool IgnoreRename = false;
+        //wicky.patch.end: add OriginalName support
 
 		string name;
 		TypeReference declaring_type;
@@ -46,7 +54,18 @@ namespace Mono.Cecil {
 
 		public virtual TypeReference DeclaringType {
 			get { return declaring_type; }
-			set { declaring_type = value; }
+            set
+            {
+                //wicky.patch.start: avoid recursive declaringtype of some obfuscated assemblies,
+                //currently only one level checking
+                if (value != null)
+                {
+                    if(this == value || this == value.DeclaringType)
+                        return;
+                }
+                //wicky.patch.end
+                declaring_type = value;
+            }
 		}
 
 		public MetadataToken MetadataToken {

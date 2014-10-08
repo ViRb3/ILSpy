@@ -119,6 +119,16 @@ namespace Mono.Cecil {
 		}
 
 		public event AssemblyResolveEventHandler ResolveFailure;
+        //wicky.patch.start
+        public event AssemblyResolveEventHandler ResolveFirst;
+
+        private bool _raiseResolveException = true;
+        public bool RaiseResolveException
+        {
+            get { return _raiseResolveException; }
+            set { _raiseResolveException = value; }
+        }
+        //wicky.patch.end
 
 		protected BaseAssemblyResolver ()
 		{
@@ -142,6 +152,16 @@ namespace Mono.Cecil {
 		{
 			if (name == null)
 				throw new ArgumentNullException ("name");
+
+            //wicky.patch.start
+            if (ResolveFirst != null)
+            {
+                var assemblyFirst = ResolveFirst(this, name);
+                if (assemblyFirst != null)
+                    return assemblyFirst;
+            }
+            //wicky.patch.end
+
 			if (parameters == null)
 				parameters = new ReaderParameters ();
 
@@ -150,6 +170,13 @@ namespace Mono.Cecil {
 				return assembly;
 
 #if !SILVERLIGHT && !CF
+			if (name.IsRetargetable) {
+				// if the reference is retargetable, zero it
+				name = new AssemblyNameReference (name.Name, new Version (0, 0, 0, 0)) {
+					PublicKeyToken = Empty<byte>.Array,
+				};
+			}
+
 			var framework_dir = Path.GetDirectoryName (typeof (object).Module.FullyQualifiedName);
 
 			if (IsZero (name.Version)) {
@@ -179,7 +206,13 @@ namespace Mono.Cecil {
 					return assembly;
 			}
 
-			throw new AssemblyResolutionException (name);
+            //wicky.patch.start: 
+			//throw new AssemblyResolutionException (name);
+            if (this.RaiseResolveException)
+                throw new AssemblyResolutionException(name);
+            else
+                return null;
+            //wicky.patch.end
 		}
 
 		AssemblyDefinition SearchDirectory (AssemblyNameReference name, IEnumerable<string> directories, ReaderParameters parameters)

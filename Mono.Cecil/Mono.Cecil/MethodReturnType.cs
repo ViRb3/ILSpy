@@ -26,8 +26,6 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
 
-using System.Threading;
-
 using Mono.Collections.Generic;
 
 namespace Mono.Cecil {
@@ -48,12 +46,7 @@ namespace Mono.Cecil {
 		}
 
 		internal ParameterDefinition Parameter {
-			get {
-				if (parameter == null)
-					Interlocked.CompareExchange (ref parameter, new ParameterDefinition (return_type, method), null);
-
-				return parameter;
-			}
+			get { return parameter ?? (parameter = new ParameterDefinition (return_type, method)); }
 		}
 
 		public MetadataToken MetadataToken {

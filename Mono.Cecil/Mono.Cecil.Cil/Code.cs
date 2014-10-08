@@ -248,5 +248,8 @@ namespace Mono.Cecil.Cil {
 		Sizeof,
 		Refanytype,
 		Readonly,
+        //wicky.patch.start
+        Unused,
+        //wicky.patch.end
 	}
 }

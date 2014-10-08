@@ -79,7 +79,7 @@ namespace Mono.Cecil {
 					return constraints;
 
 				if (HasImage)
-					return Module.Read (ref constraints, this, (generic_parameter, reader) => reader.ReadGenericConstraints (generic_parameter));
+					return constraints = Module.Read (this, (generic_parameter, reader) => reader.ReadGenericConstraints (generic_parameter));
 
 				return constraints = new Collection<TypeReference> ();
 			}
@@ -95,7 +95,7 @@ namespace Mono.Cecil {
 		}
 
 		public Collection<CustomAttribute> CustomAttributes {
-			get { return custom_attributes ?? (this.GetCustomAttributes (ref custom_attributes, Module)); }
+			get { return custom_attributes ?? (custom_attributes = this.GetCustomAttributes (Module)); }
 		}
 
 		public override IMetadataScope Scope {
@@ -107,6 +107,16 @@ namespace Mono.Cecil {
 					? ((MethodReference) owner).DeclaringType.Scope
 					: ((TypeReference) owner).Scope;
 			}
+			set { throw new InvalidOperationException (); }
+		}
+
+		public override TypeReference DeclaringType {
+			get { return owner as TypeReference; }
+			set { throw new InvalidOperationException (); }
+		}
+
+		public MethodReference DeclaringMethod {
+			get { return owner as MethodReference; }
 		}
 
 		public override ModuleDefinition Module {

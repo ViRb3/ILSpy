@@ -132,7 +132,7 @@ namespace Mono.Cecil {
 					return interfaces;
 
 				if (HasImage)
-					return Module.Read (ref interfaces, this, (type, reader) => reader.ReadInterfaces (type));
+					return interfaces = Module.Read (this, (type, reader) => reader.ReadInterfaces (type));
 
 				return interfaces = new Collection<TypeReference> ();
 			}
@@ -156,7 +156,7 @@ namespace Mono.Cecil {
 					return nested_types;
 
 				if (HasImage)
-					return Module.Read (ref nested_types, this, (type, reader) => reader.ReadNestedTypes (type));
+					return nested_types = Module.Read (this, (type, reader) => reader.ReadNestedTypes (type));
 
 				return nested_types = new MemberDefinitionCollection<TypeDefinition> (this);
 			}
@@ -180,7 +180,7 @@ namespace Mono.Cecil {
 					return methods;
 
 				if (HasImage)
-					return Module.Read (ref methods, this, (type, reader) => reader.ReadMethods (type));
+					return methods = Module.Read (this, (type, reader) => reader.ReadMethods (type));
 
 				return methods = new MemberDefinitionCollection<MethodDefinition> (this);
 			}
@@ -204,7 +204,7 @@ namespace Mono.Cecil {
 					return fields;
 
 				if (HasImage)
-					return Module.Read (ref fields, this, (type, reader) => reader.ReadFields (type));
+					return fields = Module.Read (this, (type, reader) => reader.ReadFields (type));
 
 				return fields = new MemberDefinitionCollection<FieldDefinition> (this);
 			}
@@ -228,7 +228,7 @@ namespace Mono.Cecil {
 					return events;
 
 				if (HasImage)
-					return Module.Read (ref events, this, (type, reader) => reader.ReadEvents (type));
+					return events = Module.Read (this, (type, reader) => reader.ReadEvents (type));
 
 				return events = new MemberDefinitionCollection<EventDefinition> (this);
 			}
@@ -252,7 +252,7 @@ namespace Mono.Cecil {
 					return properties;
 
 				if (HasImage)
-					return Module.Read (ref properties, this, (type, reader) => reader.ReadProperties (type));
+					return properties = Module.Read (this, (type, reader) => reader.ReadProperties (type));
 
 				return properties = new MemberDefinitionCollection<PropertyDefinition> (this);
 			}
@@ -268,7 +268,7 @@ namespace Mono.Cecil {
 		}
 
 		public Collection<SecurityDeclaration> SecurityDeclarations {
-			get { return security_declarations ?? (this.GetSecurityDeclarations (ref security_declarations, Module)); }
+			get { return security_declarations ?? (security_declarations = this.GetSecurityDeclarations (Module)); }
 		}
 
 		public bool HasCustomAttributes {
@@ -281,7 +281,7 @@ namespace Mono.Cecil {
 		}
 
 		public Collection<CustomAttribute> CustomAttributes {
-			get { return custom_attributes ?? (this.GetCustomAttributes (ref custom_attributes, Module)); }
+			get { return custom_attributes ?? (custom_attributes = this.GetCustomAttributes (Module)); }
 		}
 
 		public override bool HasGenericParameters {
@@ -294,7 +294,7 @@ namespace Mono.Cecil {
 		}
 
 		public override Collection<GenericParameter> GenericParameters {
-			get { return generic_parameters ?? (this.GetGenericParameters (ref generic_parameters, Module)); }
+			get { return generic_parameters ?? (generic_parameters = this.GetGenericParameters (Module)); }
 		}
 
 		#region TypeAttributes
@@ -510,6 +510,11 @@ namespace Mono.Cecil {
 				var nested_type = nested_types [i];
 				if (nested_type.Name == name)
 					return nested_type;
+                //wicky.patch.start: check original name; seems not good, but no better way currently
+                //generic case: http://groups.google.com/group/mono-cecil/browse_thread/thread/f4088687d73e87a4/a168740fa6744f8d
+                if (nested_type.OriginalName != null && nested_type.OriginalName == name)
+                    return nested_type;
+                //wicky.patch.end
 			}
 
 			return null;

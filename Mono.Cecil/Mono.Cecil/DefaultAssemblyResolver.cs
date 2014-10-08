@@ -31,6 +31,13 @@ using System.Collections.Generic;
 
 namespace Mono.Cecil {
 
+    //wicky.patch.start
+    public class GlobalAssemblyResolver
+    {
+        public static DefaultAssemblyResolver Instance = new DefaultAssemblyResolver();
+    }
+    //wicky.patch.end
+
 	public class DefaultAssemblyResolver : BaseAssemblyResolver {
 
 		readonly IDictionary<string, AssemblyDefinition> cache;
@@ -66,5 +73,19 @@ namespace Mono.Cecil {
 
 			cache [name] = assembly;
 		}
+
+        //wicky.patch.start
+        public void RemoveAssembly(AssemblyDefinition assembly)
+        {
+            if (assembly == null)
+                throw new ArgumentNullException("assembly");
+
+            var name = assembly.Name.FullName;
+            if (cache.ContainsKey(name))
+            {
+                cache.Remove(name);
+            }            
+        }
+        //wicky.patch.end
 	}
 }

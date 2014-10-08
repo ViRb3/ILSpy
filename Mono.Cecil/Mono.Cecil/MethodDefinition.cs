@@ -37,8 +37,7 @@ namespace Mono.Cecil {
 
 		ushort attributes;
 		ushort impl_attributes;
-		internal volatile bool sem_attrs_ready;
-		internal MethodSemanticsAttributes sem_attrs;
+		internal MethodSemanticsAttributes? sem_attrs;
 		Collection<CustomAttribute> custom_attributes;
 		Collection<SecurityDeclaration> security_declarations;
 
@@ -60,24 +59,23 @@ namespace Mono.Cecil {
 
 		public MethodSemanticsAttributes SemanticsAttributes {
 			get {
-				if (sem_attrs_ready)
-					return sem_attrs;
+				if (sem_attrs.HasValue)
+					return sem_attrs.Value;
 
 				if (HasImage) {
 					ReadSemantics ();
-					return sem_attrs;
+					return sem_attrs.Value;
 				}
 
 				sem_attrs = MethodSemanticsAttributes.None;
-				sem_attrs_ready = true;
-				return sem_attrs;
+				return sem_attrs.Value;
 			}
 			set { sem_attrs = value; }
 		}
 
 		internal void ReadSemantics ()
 		{
-			if (sem_attrs_ready)
+			if (sem_attrs.HasValue)
 				return;
 
 			var module = this.Module;
@@ -100,7 +98,7 @@ namespace Mono.Cecil {
 		}
 
 		public Collection<SecurityDeclaration> SecurityDeclarations {
-			get { return security_declarations ?? (this.GetSecurityDeclarations (ref security_declarations, Module)); }
+			get { return security_declarations ?? (security_declarations = this.GetSecurityDeclarations (Module)); }
 		}
 
 		public bool HasCustomAttributes {
@@ -113,7 +111,7 @@ namespace Mono.Cecil {
 		}
 
 		public Collection<CustomAttribute> CustomAttributes {
-			get { return custom_attributes ?? (this.GetCustomAttributes (ref custom_attributes, Module)); }
+			get { return custom_attributes ?? (custom_attributes = this.GetCustomAttributes (Module)); }
 		}
 
 		public int RVA {
@@ -133,24 +131,18 @@ namespace Mono.Cecil {
 
 		public MethodBody Body {
 			get {
-				MethodBody localBody = this.body;
-				if (localBody != null)
-					return localBody;
+				if (body != null)
+					return body;
 
 				if (!HasBody)
 					return null;
 
 				if (HasImage && rva != 0)
-					return Module.Read (ref body, this, (method, reader) => reader.ReadMethodBody (method));
+					return body = Module.Read (this, (method, reader) => reader.ReadMethodBody (method));
 
 				return body = new MethodBody (this);
 			}
-			set {
-				// we reset Body to null in ILSpy to save memory; so we need that operation to be thread-safe
-				lock (Module.SyncRoot) {
-					body = value;
-				}
-			}
+			set { body = value; }
 		}
 
 		public bool HasPInvokeInfo {
@@ -168,7 +160,7 @@ namespace Mono.Cecil {
 					return pinvoke;
 
 				if (HasImage && IsPInvokeImpl)
-					return Module.Read (ref pinvoke, this, (method, reader) => reader.ReadPInvokeInfo (method));
+					return pinvoke = Module.Read (this, (method, reader) => reader.ReadPInvokeInfo (method));
 
 				return null;
 			}
@@ -196,7 +188,7 @@ namespace Mono.Cecil {
 					return overrides;
 
 				if (HasImage)
-					return Module.Read (ref overrides, this, (method, reader) => reader.ReadOverrides (method));
+					return overrides = Module.Read (this, (method, reader) => reader.ReadOverrides (method));
 
 				return overrides = new Collection<MethodReference> ();
 			}
@@ -212,7 +204,7 @@ namespace Mono.Cecil {
 		}
 
 		public override Collection<GenericParameter> GenericParameters {
-			get { return generic_parameters ?? (this.GetGenericParameters (ref generic_parameters, Module)); }
+			get { return generic_parameters ?? (generic_parameters = this.GetGenericParameters (Module)); }
 		}
 
 		#region MethodAttributes

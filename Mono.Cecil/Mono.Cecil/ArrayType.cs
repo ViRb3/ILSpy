@@ -139,7 +139,7 @@ namespace Mono.Cecil {
 			: base (type)
 		{
 			Mixin.CheckType (type);
-			this.etype = MD.ElementType.Array;
+			etype = MD.ElementType.Array;
 		}
 
 		public ArrayType (TypeReference type, int rank)

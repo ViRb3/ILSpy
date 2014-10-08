@@ -116,7 +116,17 @@ namespace Mono.Cecil.Cil {
 		readonly byte stack_behavior_push;
 
 		public string Name {
-			get { return OpCodeNames.names [(int) Code]; }
+            //wicky.patch.start
+			//get { return OpCodeNames.names [(int) Code]; }
+            get
+            {
+                const string unused = "unused";
+				int index = (int) Code;
+                if (index < OpCodeNames.names.Length)
+                    return OpCodeNames.names[index] ?? unused;
+                return unused;
+            }
+            //wicky.patch.end
 		}
 
 		public int Size {

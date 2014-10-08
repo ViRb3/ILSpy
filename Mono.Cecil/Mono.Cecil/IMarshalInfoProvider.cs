@@ -45,11 +45,10 @@ namespace Mono.Cecil {
 
 		public static MarshalInfo GetMarshalInfo (
 			this IMarshalInfoProvider self,
-			ref MarshalInfo variable,
 			ModuleDefinition module)
 		{
 			return module.HasImage ()
-				? module.Read (ref variable, self, (provider, reader) => reader.ReadMarshalInfo (provider))
+				? module.Read (self, (provider, reader) => reader.ReadMarshalInfo (provider))
 				: null;
 		}
 	}

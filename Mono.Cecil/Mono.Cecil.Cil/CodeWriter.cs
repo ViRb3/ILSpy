@@ -57,7 +57,38 @@ namespace Mono.Cecil.Cil {
 			this.metadata = metadata;
 			this.standalone_signatures = new Dictionary<uint, MetadataToken> ();
 		}
-
+		
+        //HaRpy.patch.start
+        public bool IsWriteToBytes { get { return this.metadata == null; } }
+        readonly internal MetadataReader reader;
+        MethodDefinition method;
+        public CodeWriter(MethodDefinition method)
+            : base(0)
+        {
+            this.code_base = 0;
+            this.metadata = null;
+            this.method = method;
+            this.reader = method.DeclaringType.Module.reader;
+            this.body = method.Body;
+        }
+        public byte[] WriteMethodBody()
+        {
+            if (IsEmptyMethodBody(this.body)) return null;
+            ComputeHeader();
+            if (RequiresFatHeader())
+                WriteFatHeader();
+            else
+                WriteByte((byte)(0x2 | (body.CodeSize << 2))); // tiny
+            WriteInstructions();
+            if (body.HasExceptionHandlers)
+                WriteExceptionHandlers();
+            //return data
+            if (base.length == 0) return null;
+            Array.Resize(ref base.buffer, base.length);
+            return base.buffer;
+        }
+        //HaRpy.patch.end
+		
 		public RVA WriteMethodBody (MethodDefinition method)
 		{
 			var rva = BeginMethod ();
@@ -254,7 +285,14 @@ namespace Mono.Cecil.Cil {
 			case OperandType.InlineField:
 			case OperandType.InlineMethod:
 			case OperandType.InlineTok:
-				WriteMetadataToken (metadata.LookupToken ((IMetadataTokenProvider) operand));
+                //HaRpy.patch.start
+                if (IsWriteToBytes)
+                {
+                    WriteMetadataToken(((IMetadataTokenProvider)operand).MetadataToken);
+                    break;
+                }
+                //HaRpy.patch.end
+                WriteMetadataToken (metadata.LookupToken ((IMetadataTokenProvider) operand));
 				break;
 			default:
 				throw new ArgumentException ();
@@ -275,7 +313,17 @@ namespace Mono.Cecil.Cil {
 		{
 			if (@string == null)
 				return 0;
-
+            //HaRpy.patch.start
+            if (IsWriteToBytes)
+            {
+                //warning: make strings as internal!
+                foreach (System.Collections.Generic.KeyValuePair<uint,string> uP in reader.image.UserStringHeap.strings)
+                {
+                    if (uP.Value == @string) return uP.Key;
+                }
+                return 0;
+            }
+            //HaRpy.patch.end
 			return metadata.user_string_heap.GetStringIndex (@string);
 		}
 
@@ -328,7 +376,11 @@ namespace Mono.Cecil.Cil {
 			}
 
 			body.code_size = offset;
-			body.max_stack_size = max_stack;
+            //wicky.patch.start: max_stack may be wrong for obfuscated code, contributed by beket...@gmail.com
+			//body.max_stack_size = max_stack;
+            if (max_stack > body.max_stack_size)
+                body.max_stack_size = max_stack;
+            //wicky.patch.end
 		}
 
 		void ComputeExceptionHandlerStackSize (ref Dictionary<Instruction, int> stack_sizes)
@@ -383,6 +435,9 @@ namespace Mono.Cecil.Cil {
 			switch (instruction.opcode.OperandType) {
 			case OperandType.ShortInlineBrTarget:
 			case OperandType.InlineBrTarget:
+                //wicky.patch.start
+                if(instruction.operand != null)
+                //wicky.patch.end
 				CopyBranchStackSize (ref stack_sizes, (Instruction) instruction.operand, stack_size);
 				break;
 			case OperandType.InlineSwitch:
@@ -424,6 +479,11 @@ namespace Mono.Cecil.Cil {
 			switch (instruction.opcode.FlowControl) {
 			case FlowControl.Call: {
 				var method = (IMethodSignature) instruction.operand;
+                //wicky.patch.start
+                if (method != null)
+                {
+                 //wicky.patch.end
+
 				// pop 'this' argument
 				if (method.HasImplicitThis() && instruction.opcode.Code != Code.Newobj)
 					stack_size--;
@@ -436,6 +496,10 @@ namespace Mono.Cecil.Cil {
 				// push return value
 				if (method.ReturnType.etype != ElementType.Void || instruction.opcode.Code == Code.Newobj)
 					stack_size++;
+					
+                 //wicky.patch.start
+                }
+                //wicky.patch.end
 				break;
 			}
 			default:
@@ -570,6 +634,11 @@ namespace Mono.Cecil.Cil {
 			for (int i = 0; i < handlers.Count; i++) {
 				var handler = handlers [i];
 
+                //wicky.patch.start: ignore invalid handler
+                if (handler.TryStart == null || handler.HandlerStart == null)
+                    continue;
+                //wicky.patch.end
+
 				write_entry ((int) handler.HandlerType);
 
 				write_entry (handler.TryStart.Offset);
@@ -586,6 +655,13 @@ namespace Mono.Cecil.Cil {
 		{
 			switch (handler.HandlerType) {
 			case ExceptionHandlerType.Catch:
+                //HaRpy.patch.start
+                    if (IsWriteToBytes)
+                    {
+                        WriteMetadataToken(handler.CatchType.MetadataToken);
+                        break;
+                    }
+                //HaRpy.patch.end
 				WriteMetadataToken (metadata.LookupToken (handler.CatchType));
 				break;
 			case ExceptionHandlerType.Filter:
@@ -596,17 +672,23 @@ namespace Mono.Cecil.Cil {
 				break;
 			}
 		}
-
+		
+		
 		public MetadataToken GetStandAloneSignature (Collection<VariableDefinition> variables)
 		{
-			var signature = metadata.GetLocalVariableBlobIndex (variables);
-
+			//HaRpy.patch.start
+            if (this.IsWriteToBytes) return this.method.body.local_var_token;
+            //HaRpy.patch.end		
+            var signature = metadata.GetLocalVariableBlobIndex (variables);
 			return GetStandAloneSignatureToken (signature);
 		}
 
 		public MetadataToken GetStandAloneSignature (CallSite call_site)
 		{
-			var signature = metadata.GetCallSiteBlobIndex (call_site);
+            //HaRpy.patch.start
+            if (this.IsWriteToBytes) return call_site.MetadataToken; // ???
+            //HaRpy.patch.end
+            var signature = metadata.GetCallSiteBlobIndex (call_site);
 			var token = GetStandAloneSignatureToken (signature);
 			call_site.MetadataToken = token;
 			return token;

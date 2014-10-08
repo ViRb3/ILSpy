@@ -35,6 +35,35 @@ using RVA = System.UInt32;
 
 namespace Mono.Cecil.Cil {
 
+    //wicky.patch.start: add support to read/write directly from bytes, contributed by HaRpY
+    public class MethodBodyHelper
+    {
+        public static void FromBytes(MethodDefinition method, byte[] bytes)
+        {
+            CodeReader cr = new CodeReader(method, bytes);
+            method.Body = cr.ReadMethodBody(method);
+        }
+
+        public static void FromImage(MethodDefinition method)
+        {
+            if (method.HasBody)
+            {
+                method.Body = method.DeclaringType.Module.reader.ReadMethodBody(method);
+            }
+            else
+            {
+                method.Body = null;
+            }
+        }
+		
+        public static byte[] ToBytes(MethodDefinition method)
+        {
+            CodeWriter cw = new CodeWriter(method);
+            return cw.WriteMethodBody();
+        }
+    }
+    //wicky.patch.end
+
 	sealed class CodeReader : ByteBuffer {
 
 		readonly internal MetadataReader reader;
@@ -48,6 +77,19 @@ namespace Mono.Cecil.Cil {
 		int Offset {
 			get { return base.position - start; }
 		}
+
+        //wicky.patch.start: add support to read directly from bytes, contributed by HaRpy
+        public CodeReader(MethodDefinition method, byte[] bytes):base(bytes)
+        {
+            this.method = method;
+            this.reader = method.DeclaringType.Module.reader;
+            this.code_section = null;  //code_section could be null for obfuscated assembly
+            this.isReadFromBytes = true;
+        }
+
+        private bool isReadFromBytes = false;
+        public bool IsReadFromBytes { get { return isReadFromBytes; } }
+        //wicky.patch.end
 
 		public CodeReader (Section section, MetadataReader reader)
 			: base (section.Data)
@@ -72,6 +114,12 @@ namespace Mono.Cecil.Cil {
 		{
 			if (!IsInSection (rva)) {
 				code_section = reader.image.GetSectionAtVirtualAddress ((uint) rva);
+                //wicky.patch.start
+                if (code_section == null)
+                {
+                    throw new InvalidProgramException(String.Format("Can't find code section for RVA 0x{0:x08}", rva));
+                }
+                //wicky.patch.end
 				Reset (code_section.Data);
 			}
 
@@ -80,22 +128,37 @@ namespace Mono.Cecil.Cil {
 
 		bool IsInSection (int rva)
 		{
+            //wicky.patch.start
+            if (code_section == null) return false;
+            //wicky.patch.end
 			return code_section.VirtualAddress <= rva && rva < code_section.VirtualAddress + code_section.SizeOfRawData;
 		}
 
 		void ReadMethodBody ()
 		{
-			MoveTo (method.RVA);
+            //wicky.patch.start: add support to read directly from bytes, contributed by HaRpy
+            //MoveTo(method.RVA);
+            if (this.IsReadFromBytes)
+                base.position = 0;
+            else 
+			    MoveTo (method.RVA);
+            //wicky.patch.end
 
 			var flags = ReadByte ();
 			switch (flags & 0x3) {
 			case 0x2: // tiny
+                //wicky.patch.start: set codeRva
+                body.codeRva = method.rva + 1;
+                //wicky.patch.end
 				body.code_size = flags >> 2;
 				body.MaxStackSize = 8;
 				ReadCode ();
 				break;
 			case 0x3: // fat
-				base.position--;
+                //wicky.patch.start: set codeRva
+                body.codeRva = method.rva + 12;
+                //wicky.patch.end
+                base.position--;
 				ReadFatMethod ();
 				break;
 			default:
@@ -141,8 +204,16 @@ namespace Mono.Cecil.Cil {
 			start = position;
 			var code_size = body.code_size;
 
-			if (code_size < 0 || buffer.Length <= (uint) (code_size + position))
-				code_size = 0;
+            //wicky.patch.start: add support to read directly from bytes, contributed by HaRpy
+            //if (code_size < 0 || buffer.Length <= (uint)(code_size + position))
+            //    code_size = 0;       
+            if (code_size < 0)
+                code_size = 0;
+            else if (this.IsReadFromBytes && buffer.Length < (uint)(code_size + position))
+                code_size = 0;
+            else if (!this.IsReadFromBytes && buffer.Length <= (uint)(code_size + position))
+                code_size = 0;
+            //wicky.patch.end
 
 			var end = start + code_size;
 			var instructions = body.instructions = new InstructionCollection ((code_size + 1) / 2);
@@ -164,9 +235,20 @@ namespace Mono.Cecil.Cil {
 		OpCode ReadOpCode ()
 		{
 			var il_opcode = ReadByte ();
-			return il_opcode != 0xfe
-				? OpCodes.OneByteOpCode [il_opcode]
-				: OpCodes.TwoBytesOpCode [ReadByte ()];
+            //wicky.patch.start: invalid opcode
+            //return il_opcode != 0xfe
+            //    ? OpCodes.OneByteOpCode [il_opcode]
+            //    : OpCodes.TwoBytesOpCode [ReadByte ()];
+            if (il_opcode < OpCodes.OneByteOpCode.Length)
+                return OpCodes.OneByteOpCode[il_opcode];
+            if (il_opcode == 0xfe)
+            {
+                il_opcode = ReadByte();
+                if (il_opcode < OpCodes.TwoBytesOpCode.Length)
+                    return OpCodes.TwoBytesOpCode[il_opcode];
+            }
+            return OpCodes.Nop;
+            //wicky.patch.end
 		}
 
 		object ReadOperand (Instruction instruction)
@@ -175,10 +257,22 @@ namespace Mono.Cecil.Cil {
 			case OperandType.InlineSwitch:
 				var length = ReadInt32 ();
 				var base_offset = Offset + (4 * length);
-				var branches = new int [length];
-				for (int i = 0; i < length; i++)
-					branches [i] = base_offset + ReadInt32 ();
-				return branches;
+                //wicky.patch.start
+                if (length < 0)
+                {
+                    return new int[0];
+                }
+                try
+                {
+                    //wicky.patch.end
+                    var branches = new int[length];
+                    for (int i = 0; i < length; i++)
+                        branches[i] = base_offset + ReadInt32();
+                    return branches;
+                    //wicky.patch.start
+                }
+                catch { return new int[0]; }
+                //wicky.patch.end
 			case OperandType.ShortInlineBrTarget:
 				return ReadSByte () + Offset;
 			case OperandType.InlineBrTarget:
@@ -271,6 +365,9 @@ namespace Mono.Cecil.Cil {
 		{
 			var size = instructions.size;
 			var items = instructions.items;
+            //wicky.patch.start: ignore empty collection issue
+            if (size == 0 || items.Length == 0) return null;
+            //wicky.patch.end
 			if (offset < 0 || offset > items [size - 1].offset)
 				return null;
 
@@ -340,10 +437,16 @@ namespace Mono.Cecil.Cil {
 					(ExceptionHandlerType) (read_entry () & 0x7));
 
 				handler.TryStart = GetInstruction (read_entry ());
+                //wicky.patch.start: ignore invalid trystart
+                if (handler.TryStart != null)
+                //wicky.patch.end
 				handler.TryEnd = GetInstruction (handler.TryStart.Offset + read_length ());
 
 				handler.HandlerStart = GetInstruction (read_entry ());
-				handler.HandlerEnd = GetInstruction (handler.HandlerStart.Offset + read_length ());
+                //wicky.patch.start: ignore invalid trystart
+                if (handler.HandlerStart != null)
+                //wicky.patch.end
+                handler.HandlerEnd = GetInstruction(handler.HandlerStart.Offset + read_length());
 
 				ReadExceptionHandlerSpecific (handler);
 
@@ -583,6 +686,9 @@ namespace Mono.Cecil.Cil {
 				switch (handler_type) {
 				case ExceptionHandlerType.Catch:
 					var exception = reader.LookupToken (ReadToken ());
+                    //wicky.patch.start: ignore null
+                    if(exception != null)
+                    //wicky.patch.end
 					buffer.WriteUInt32 (metadata.LookupToken (exception).ToUInt32 ());
 					break;
 				default:

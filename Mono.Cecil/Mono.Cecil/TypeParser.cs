@@ -173,13 +173,7 @@ namespace Mono.Cecil {
 				return;
 			}
 
-#if !CF
-			Array.Resize (ref array, array.Length + 1);
-#else
-			var copy = new T [array.Length + 1];
-			Array.Copy (array, copy, array.Length);
-			array = copy;
-#endif
+			array = array.Resize (array.Length + 1);
 			array [array.Length - 1] = item;
 		}
 
@@ -272,8 +266,11 @@ namespace Mono.Cecil {
 
 		public static TypeReference ParseType (ModuleDefinition module, string fullname)
 		{
-			if (string.IsNullOrEmpty (fullname))
+            //wicky.patch.start: ignore empty type name
+			//if (string.IsNullOrEmpty (fullname))
+            if (String.IsNullOrWhiteSpace(fullname))
 				return null;
+            //wicky.patch.end
 
 			var parser = new TypeParser (fullname);
 			return GetTypeReference (module, parser.ParseType (true));

@@ -76,7 +76,7 @@ namespace Mono.Cecil {
 		}
 
 		public Collection<CustomAttribute> CustomAttributes {
-			get { return custom_attributes ?? (this.GetCustomAttributes (ref custom_attributes, Module)); }
+			get { return custom_attributes ?? (custom_attributes = this.GetCustomAttributes (Module)); }
 		}
 
 		public MethodDefinition GetMethod {
@@ -170,7 +170,7 @@ namespace Mono.Cecil {
 
 		public bool HasConstant {
 			get {
-				this.ResolveConstant (ref constant, Module);
+				ResolveConstant ();
 
 				return constant != Mixin.NoValue;
 			}
@@ -180,6 +180,14 @@ namespace Mono.Cecil {
 		public object Constant {
 			get { return HasConstant ? constant : null;	}
 			set { constant = value; }
+		}
+
+		void ResolveConstant ()
+		{
+			if (constant != Mixin.NotResolved)
+				return;
+
+			this.ResolveConstant (ref constant, Module);
 		}
 
 		#region PropertyAttributes
@@ -239,16 +247,14 @@ namespace Mono.Cecil {
 
 		void InitializeMethods ()
 		{
+			if (get_method != null || set_method != null)
+				return;
+
 			var module = this.Module;
-			lock (module.SyncRoot) {
-				if (get_method != null || set_method != null)
-					return;
+			if (!module.HasImage ())
+				return;
 
-				if (!module.HasImage ())
-					return;
-
-				module.Read (this, (property, reader) => reader.ReadMethods (property));
-			}
+			module.Read (this, (property, reader) => reader.ReadMethods (property));
 		}
 
 		public override PropertyDefinition Resolve ()

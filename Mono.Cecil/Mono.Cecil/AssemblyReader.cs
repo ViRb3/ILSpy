@@ -178,6 +178,10 @@ namespace Mono.Cecil {
 
 		static void ReadType (TypeDefinition type)
 		{
+            //wicky.patch.start: ignore null type
+            if (type == null) return;
+            //wicky.patch.end
+
 			ReadGenericParameters (type);
 
 			if (type.HasInterfaces)
@@ -552,7 +556,13 @@ namespace Mono.Cecil {
 				var parameters = new ReaderParameters {
 					ReadingMode = module.ReadingMode,
 					SymbolReaderProvider = module.SymbolReaderProvider,
+					AssemblyResolver = module.AssemblyResolver
 				};
+
+                //wicky.patch.start
+                var moduleFileName = GetModuleFileName(name);
+                if (!File.Exists(moduleFileName)) continue;
+                //wicky.patch.end
 
 				modules.Add (ModuleDefinition.ReadModule (
 					GetModuleFileName (name), parameters));
@@ -626,6 +636,12 @@ namespace Mono.Cecil {
 						Assembly = (AssemblyNameReference) GetTypeReferenceScope (implementation),
 					};
 				} else if (implementation.TokenType == TokenType.File) {
+                    //wicky.patch.start: check rid 
+                    var infoTemp = image.TableHeap [Table.File];
+			        var lengthTemp = infoTemp.Length;
+                    if (lengthTemp == 0 || implementation.RID > lengthTemp)
+                        continue;
+                    //wicky.patch.end
 					var file_record = ReadFileRecord (implementation.RID);
 
 					resource = new LinkedResource (name, flags) {
@@ -1610,11 +1626,10 @@ namespace Mono.Cecil {
 			var methods = type.Methods;
 			for (int i = 0; i < methods.Count; i++) {
 				var method = methods [i];
-				if (method.sem_attrs_ready)
+				if (method.sem_attrs.HasValue)
 					continue;
 
 				method.sem_attrs = ReadMethodSemantics (method);
-				method.sem_attrs_ready = true;
 			}
 		}
 
@@ -1704,8 +1719,16 @@ namespace Mono.Cecil {
 				if (!MoveTo (Table.Param, param_range.Start))
 					return;
 
-				for (uint i = 0; i < param_range.Length; i++)
-					ReadParameter (param_range.Start + i, method);
+                //wicky.patch.start: ignore invalid parameter                
+				//for (uint i = 0; i < param_range.Length; i++)
+					//ReadParameter (param_range.Start + i, method);
+                uint paramCount = (uint)method.Parameters.Count + 1;
+                if (paramCount > param_range.Length)
+                    paramCount = param_range.Length;
+                for (uint i = 0; i < paramCount; i++)
+                    ReadParameter (param_range.Start + i, method);
+                //wicky.patch.end
+
 			} else
 				ReadParameterPointers (method, param_range);
 		}
@@ -1725,9 +1748,19 @@ namespace Mono.Cecil {
 
 		void ReadParameter (uint param_rid, MethodDefinition method)
 		{
+            //wicky.patch.start: ignore invalid parameter rid
+            if (position >= buffer.Length - 4) return;
+            //wicky.patch.end
+
 			var attributes = (ParameterAttributes) ReadUInt16 ();
 			var sequence = ReadUInt16 ();
-			var name = ReadString ();
+
+            //wicky.patch.start: ignore invalid parameter rid
+            if (sequence != 0 && (sequence < 1 || sequence >= method.Parameters.Count + 1))
+                return;
+            //wicky.patch.end
+
+            var name = ReadString();
 
 			var parameter = sequence == 0
 				? method.MethodReturnType.Parameter
@@ -1788,25 +1821,35 @@ namespace Mono.Cecil {
 		{
 			InitializeGenericParameters ();
 
-			Range range;
-			if (!metadata.TryGetGenericParameterRange (provider, out range))
+			Range [] ranges;
+			if (!metadata.TryGetGenericParameterRanges (provider, out ranges))
 				return false;
 
-			return range.Length > 0;
+			return RangesSize (ranges) > 0;
 		}
 
 		public Collection<GenericParameter> ReadGenericParameters (IGenericParameterProvider provider)
 		{
 			InitializeGenericParameters ();
 
-			Range range;
-			if (!metadata.TryGetGenericParameterRange (provider, out range)
-				|| !MoveTo (Table.GenericParam, range.Start))
+			Range [] ranges;
+			if (!metadata.TryGetGenericParameterRanges (provider, out ranges))
 				return new GenericParameterCollection (provider);
 
 			metadata.RemoveGenericParameterRange (provider);
 
-			var generic_parameters = new GenericParameterCollection (provider, (int) range.Length);
+			var generic_parameters = new GenericParameterCollection (provider, RangesSize (ranges));
+
+			for (int i = 0; i < ranges.Length; i++)
+				ReadGenericParametersRange (ranges [i], provider, generic_parameters);
+
+			return generic_parameters;
+		}
+
+		void ReadGenericParametersRange (Range range, IGenericParameterProvider provider, GenericParameterCollection generic_parameters)
+		{
+			if (!MoveTo (Table.GenericParam, range.Start))
+				return;
 
 			for (uint i = 0; i < range.Length; i++) {
 				ReadUInt16 (); // index
@@ -1820,8 +1863,6 @@ namespace Mono.Cecil {
 
 				generic_parameters.Add (parameter);
 			}
-
-			return generic_parameters;
 		}
 
 		void InitializeGenericParameters ()
@@ -1838,10 +1879,10 @@ namespace Mono.Cecil {
 			});
 		}
 
-		Dictionary<MetadataToken, Range> InitializeRanges (Table table, Func<MetadataToken> get_next)
+		Dictionary<MetadataToken, Range []> InitializeRanges (Table table, Func<MetadataToken> get_next)
 		{
 			int length = MoveTo (table);
-			var ranges = new Dictionary<MetadataToken, Range> (length);
+			var ranges = new Dictionary<MetadataToken, Range []> (length);
 
 			if (length == 0)
 				return ranges;
@@ -1856,18 +1897,32 @@ namespace Mono.Cecil {
 					owner = next;
 					range.Length++;
 				} else if (next != owner) {
-					if (owner.RID != 0)
-						ranges.Add (owner, range);
+					AddRange (ranges, owner, range);
 					range = new Range (i, 1);
 					owner = next;
 				} else
 					range.Length++;
 			}
 
-			if (owner != MetadataToken.Zero && !ranges.ContainsKey (owner))
-				ranges.Add (owner, range);
+			AddRange (ranges, owner, range);
 
 			return ranges;
+		}
+
+		static void AddRange (Dictionary<MetadataToken, Range []> ranges, MetadataToken owner, Range range)
+		{
+			if (owner.RID == 0)
+				return;
+
+			Range [] slots;
+			if (!ranges.TryGetValue (owner, out slots)) {
+				ranges.Add (owner, new [] { range });
+				return;
+			}
+
+			slots = slots.Resize (slots.Length + 1);
+			slots [slots.Length - 1] = range;
+			ranges [owner] = slots;
 		}
 
 		public bool HasGenericConstraints (GenericParameter generic_parameter)
@@ -2145,17 +2200,43 @@ namespace Mono.Cecil {
 			return instance;
 		}
 
+        //wicky.patch.start: add AllMemberReferences
+        List<MemberReference> _allMemberReferences = new List<MemberReference>();
+        public List<MemberReference> AllMemberReferences
+        {
+            get
+            {
+                return _allMemberReferences;
+            }
+        }       
+        //wicky.patch.end
+
 		MemberReference GetMemberReference (uint rid)
 		{
 			InitializeMemberReferences ();
 
 			var member = metadata.GetMemberReference (rid);
-			if (member != null)
-				return member;
+            //wicky.patch.start: add AllMemberReferences
+            //if (member != null)
+            if (member != null && !member.ContainsGenericParameter)
+            //wicky.patch.end
+                return member;
 
-			member = ReadMemberReference (rid);
-			if (member != null && !member.ContainsGenericParameter)
-				metadata.AddMemberReference (member);
+            member = ReadMemberReference(rid);
+
+            //wicky.patch.start: add AllMemberReferences
+            //discussion: http://groups.google.com/group/mono-cecil/browse_thread/thread/f4088687d73e87a4/2291b9f57daea8f1
+            //and http://groups.google.com/group/mono-cecil/browse_thread/thread/e94b6fe2e1ceef00/279cb4967276acc9 
+            //related to test MethodRefDeclaredOnGenerics
+            if (member != null)
+            {
+                _allMemberReferences.Add(member);
+                //if (!member.ContainsGenericParameter)            
+                //metadata.AddMemberReference(member);
+                metadata.AddMemberReference(member);
+            }
+            //wicky.patch.end
+
 			return member;
 		}
 
@@ -2333,23 +2414,35 @@ namespace Mono.Cecil {
 		{
 			InitializeCustomAttributes ();
 
-			Range range;
-			if (!metadata.TryGetCustomAttributeRange (owner, out range))
+			Range [] ranges;
+			if (!metadata.TryGetCustomAttributeRanges (owner, out ranges))
 				return false;
 
-			return range.Length > 0;
+			return RangesSize (ranges) > 0;
 		}
 
 		public Collection<CustomAttribute> ReadCustomAttributes (ICustomAttributeProvider owner)
 		{
 			InitializeCustomAttributes ();
 
-			Range range;
-			if (!metadata.TryGetCustomAttributeRange (owner, out range)
-				|| !MoveTo (Table.CustomAttribute, range.Start))
+			Range [] ranges;
+			if (!metadata.TryGetCustomAttributeRanges (owner, out ranges))
 				return new Collection<CustomAttribute> ();
 
-			var custom_attributes = new Collection<CustomAttribute> ((int) range.Length);
+			var custom_attributes = new Collection<CustomAttribute> (RangesSize (ranges));
+
+			for (int i = 0; i < ranges.Length; i++)
+				ReadCustomAttributeRange (ranges [i], custom_attributes);
+
+			metadata.RemoveCustomAttributeRange (owner);
+
+			return custom_attributes;
+		}
+
+		void ReadCustomAttributeRange (Range range, Collection<CustomAttribute> custom_attributes)
+		{
+			if (!MoveTo (Table.CustomAttribute, range.Start))
+				return;
 
 			for (int i = 0; i < range.Length; i++) {
 				ReadMetadataToken (CodedIndex.HasCustomAttribute);
@@ -2361,10 +2454,15 @@ namespace Mono.Cecil {
 
 				custom_attributes.Add (new CustomAttribute (signature, constructor));
 			}
+		}
 
-			metadata.RemoveCustomAttributeRange (owner);
+		static int RangesSize (Range [] ranges)
+		{
+			uint size = 0;
+			for (int i = 0; i < ranges.Length; i++)
+				size += ranges [i].Length;
 
-			return custom_attributes;
+			return (int) size;
 		}
 
 		public byte [] ReadCustomAttributeBlob (uint signature)
@@ -2456,23 +2554,35 @@ namespace Mono.Cecil {
 		{
 			InitializeSecurityDeclarations ();
 
-			Range range;
-			if (!metadata.TryGetSecurityDeclarationRange (owner, out range))
+			Range [] ranges;
+			if (!metadata.TryGetSecurityDeclarationRanges (owner, out ranges))
 				return false;
 
-			return range.Length > 0;
+			return RangesSize (ranges) > 0;
 		}
 
 		public Collection<SecurityDeclaration> ReadSecurityDeclarations (ISecurityDeclarationProvider owner)
 		{
 			InitializeSecurityDeclarations ();
 
-			Range range;
-			if (!metadata.TryGetSecurityDeclarationRange (owner, out range)
-				|| !MoveTo (Table.DeclSecurity, range.Start))
+			Range [] ranges;
+			if (!metadata.TryGetSecurityDeclarationRanges (owner, out ranges))
 				return new Collection<SecurityDeclaration> ();
 
-			var security_declarations = new Collection<SecurityDeclaration> ((int) range.Length);
+			var security_declarations = new Collection<SecurityDeclaration> (RangesSize (ranges));
+
+			for (int i = 0; i < ranges.Length; i++)
+				ReadSecurityDeclarationRange (ranges [i], security_declarations);
+
+			metadata.RemoveSecurityDeclarationRange (owner);
+
+			return security_declarations;
+		}
+
+		void ReadSecurityDeclarationRange (Range range, Collection<SecurityDeclaration> security_declarations)
+		{
+			if (!MoveTo (Table.DeclSecurity, range.Start))
+				return;
 
 			for (int i = 0; i < range.Length; i++) {
 				var action = (SecurityAction) ReadUInt16 ();
@@ -2481,10 +2591,6 @@ namespace Mono.Cecil {
 
 				security_declarations.Add (new SecurityDeclaration (action, signature, module));
 			}
-
-			metadata.RemoveSecurityDeclarationRange (owner);
-
-			return security_declarations;
 		}
 
 		public byte [] ReadSecurityDeclarationBlob (uint signature)
@@ -2705,8 +2811,15 @@ namespace Mono.Cecil {
 
 			var instance_arguments = instance.GenericArguments;
 
-			for (int i = 0; i < arity; i++)
-				instance_arguments.Add (ReadTypeSignature ());
+            for (int i = 0; i < arity; i++)
+            //wicky.patch.start: ignore invalid generic argument
+            //instance_arguments.Add(ReadTypeSignature());
+            {
+                TypeReference tr = ReadTypeSignature();
+                if (tr != null)
+                    instance_arguments.Add(tr);
+            }
+            //wicky.patch.end
 		}
 
 		ArrayType ReadArrayTypeSignature ()
@@ -3052,9 +3165,29 @@ namespace Mono.Cecil {
 			}
 		}
 
+		string UnescapeTypeName (string name)
+		{
+			StringBuilder sb = new StringBuilder (name.Length);
+			for (int i = 0; i < name.Length; i++) {
+				char c = name [i];
+				if (name [i] == '\\') {
+					if ((i < name.Length - 1) && (name [i + 1] == '\\')) {
+						sb.Append (c);
+						i++;
+					}
+				} else {
+					sb.Append (c);
+				}
+			}
+			return sb.ToString ();
+		}
+
 		public TypeReference ReadTypeReference ()
 		{
-			return TypeParser.ParseType (reader.module, ReadUTF8String ());
+			string s = ReadUTF8String ();
+			if (s.IndexOf ('\\') != -1)
+				s = UnescapeTypeName (s);
+			return TypeParser.ParseType (reader.module, s);
 		}
 
 		object ReadCustomAttributeEnum (TypeReference enum_type)

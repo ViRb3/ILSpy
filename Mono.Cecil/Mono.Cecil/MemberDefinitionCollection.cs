@@ -75,11 +75,18 @@ namespace Mono.Cecil {
 
 		void Attach (T element)
 		{
+            //wicky.patch.start: ignore null element
+            if (element == null) return;
+            //wicky.patch.end
+
 			if (element.DeclaringType == container)
 				return;
 
-			if (element.DeclaringType != null)
-				throw new ArgumentException ("Member already attached");
+            if (element.DeclaringType != null)
+                //wicky.patch.start: ignore already attached error
+                //throw new ArgumentException ("Member already attached");
+                return;
+                //wicky.patch.end
 
 			element.DeclaringType = this.container;
 		}

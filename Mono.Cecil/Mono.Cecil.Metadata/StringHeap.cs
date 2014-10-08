@@ -35,7 +35,9 @@ using Mono.Cecil.PE;
 namespace Mono.Cecil.Metadata {
 
 	class StringHeap : Heap {
-
+        //HaRpy.patch.start: make.internal
+		internal
+		//HaRpy.patch.end
 		readonly Dictionary<uint, string> strings = new Dictionary<uint, string> ();
 
 		public StringHeap (Section section, uint start, uint size)

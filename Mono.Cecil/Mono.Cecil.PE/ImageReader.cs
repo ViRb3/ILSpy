@@ -280,6 +280,11 @@ namespace Mono.Cecil.PE {
 
 				sections [i] = section;
 
+                //wicky.patch.start: Read reloc section, Contributed by Khiem Nguyen
+				//if (section.Name == ".reloc")
+				//	continue;
+                //wicky.patch.end
+
 				ReadSectionData (section);
 			}
 

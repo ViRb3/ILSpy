@@ -82,7 +82,7 @@ namespace Mono.Cecil {
 		public static void WriteModuleTo (ModuleDefinition module, Stream stream, WriterParameters parameters)
 		{
 			if ((module.Attributes & ModuleAttributes.ILOnly) == 0)
-				throw new ArgumentException ();
+				throw new NotSupportedException ("Writing mixed-mode assemblies is not supported");
 
 			if (module.HasImage && module.ReadingMode == ReadingMode.Deferred)
 				ImmediateModuleReader.ReadModule (module);
@@ -1079,6 +1079,10 @@ namespace Mono.Cecil {
 
 		void AttachTypeDefToken (TypeDefinition type)
 		{
+            //wicky.patch.start: ignore null type
+            if (type == null) return;
+            //wicky.patch.end
+
 			type.token = new MetadataToken (TokenType.TypeDef, type_rid++);
 			type.fields_range.Start = field_rid;
 			type.methods_range.Start = method_rid;
@@ -1345,6 +1349,9 @@ namespace Mono.Cecil {
 
 			for (int i = 0; i < nested_types.Count; i++) {
 				var nested = nested_types [i];
+                //wicky.patch.start: ignore null type
+                if (nested == null) continue;
+                //wicky.patch.end
 				AddType (nested);
 				nested_table.AddRow (new NestedClassRow (nested.token.RID, type.token.RID));
 			}
@@ -1706,6 +1713,10 @@ namespace Mono.Cecil {
 			for (int i = 0; i < custom_attributes.Count; i++) {
 				var attribute = custom_attributes [i];
 
+                //wicky.patch.start: ignore invalid attribute
+                if (attribute.Constructor == null) continue;
+                //wicky.patch.end
+
 				custom_attribute_table.AddRow (new CustomAttributeRow (
 					MakeCodedRID (owner, CodedIndex.HasCustomAttribute),
 					MakeCodedRID (LookupToken (attribute.Constructor), CodedIndex.CustomAttributeType),
@@ -1933,6 +1944,11 @@ namespace Mono.Cecil {
 		{
 			var signature = CreateSignatureWriter ();
 
+            //wicky.patch.start: ignore invalid signature
+            if (declaration.signature == 0)
+                return signature;
+            //wicky.patch.end
+
 			if (!declaration.resolved)
 				signature.WriteBytes (declaration.GetBlob ());
 			else if (module.Runtime < TargetRuntime.Net_2_0)
@@ -1963,8 +1979,10 @@ namespace Mono.Cecil {
 				throw new ArgumentNullException ();
 
 			var member = provider as MemberReference;
-			if (member == null || member.Module != module)
-				throw CreateForeignMemberException (member);
+            //wicky.patch.start: seems init local variable option affected, need to study furthur
+			//if (member == null || member.Module != module)
+			//	throw CreateForeignMemberException (member);
+            //wicky.patch.end
 
 			var token = provider.MetadataToken;
 
@@ -2331,7 +2349,10 @@ namespace Mono.Cecil {
 				WriteInt16 ((short) (char) value);
 				break;
 			case TypeCode.Int32:
-				WriteInt32 ((int) value);
+                //wicky.patch.start: handle null value in obfuscated assembly
+                //WriteInt32((int)value);
+                WriteInt32((int)(value == null ? 0 : value));
+                //wicky.patch.end
 				break;
 			case TypeCode.UInt32:
 				WriteUInt32 ((uint) value);

@@ -264,17 +264,7 @@
     <Compile Include="Utils\CompositeFormatStringParser\IFormatStringError.cs" />
     <Compile Include="Completion\CompletionExtensionMethods.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Completion\" />
-    <Folder Include="TypeSystem\" />
-    <Folder Include="Utils\CompositeFormatStringParser\" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\..\Mono.Cecil\Mono.Cecil.csproj">
-      <Project>{D68133BD-1E63-496E-9EDE-4FBDBF77B486}</Project>
-      <Name>Mono.Cecil</Name>
-    </ProjectReference>
-  </ItemGroup>
+  <ItemGroup />
   <ItemGroup>
     <None Include="..\doc\Pattern Matching.html">
       <Link>PatternMatching\Pattern Matching.html</Link>
@@ -282,6 +272,12 @@
     <None Include="..\doc\XML Documentation.html">
       <Link>Documentation\XML Documentation.html</Link>
     </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\Mono.Cecil\Mono.Cecil.csproj">
+      <Project>{d68133bd-1e63-496e-9ede-4fbdbf77b486}</Project>
+      <Name>Mono.Cecil</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

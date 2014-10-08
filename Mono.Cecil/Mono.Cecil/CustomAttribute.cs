@@ -35,7 +35,10 @@ namespace Mono.Cecil {
 	public struct CustomAttributeArgument {
 
 		readonly TypeReference type;
-		readonly object value;
+        //wicky.patch.start
+        //readonly object value;
+        object value;
+        //wicky.patch.end
 
 		public TypeReference Type {
 			get { return type; }
@@ -43,6 +46,9 @@ namespace Mono.Cecil {
 
 		public object Value {
 			get { return value; }
+            //wicky.patch.start
+            set { this.value = value; }
+            //wicky.patch.end
 		}
 
 		public CustomAttributeArgument (TypeReference type, object value)
@@ -51,15 +57,28 @@ namespace Mono.Cecil {
 			this.type = type;
 			this.value = value;
 		}
+
+        //wicky.patch.start: add ToString for CustomAttributeArgument
+        public override string ToString()
+        {
+            return value == null ? String.Empty : value.ToString();
+        }
+        //wicky.patch.end
 	}
 
 	public struct CustomAttributeNamedArgument {
 
-		readonly string name;
+        //wicky.patch.start
+		//readonly string name;
+        string name;
+        //wicky.patch.end
 		readonly CustomAttributeArgument argument;
 
 		public string Name {
 			get { return name; }
+            //wicky.patch.start
+            set { Mixin.CheckName(value); this.name = value; }
+            //wicky.patch.end
 		}
 
 		public CustomAttributeArgument Argument {
@@ -72,6 +91,13 @@ namespace Mono.Cecil {
 			this.name = name;
 			this.argument = argument;
 		}
+
+        //wicky.patch.start: add ToString for CustomAttributeNamedArgument
+        public override string ToString()
+        {
+            return argument.ToString();
+        }
+        //wicky.patch.end
 	}
 
 	public interface ICustomAttribute {
@@ -191,7 +217,7 @@ namespace Mono.Cecil {
 			if (!HasImage)
 				throw new NotSupportedException ();
 
-			return Module.Read (ref blob, this, (attribute, reader) => reader.ReadCustomAttributeBlob (attribute.signature));
+			return blob = Module.Read (this, (attribute, reader) => reader.ReadCustomAttributeBlob (attribute.signature));
 		}
 
 		void Resolve ()
@@ -199,23 +225,50 @@ namespace Mono.Cecil {
 			if (resolved || !HasImage)
 				return;
 
-			Module.Read (this, (attribute, reader) => {
-				try {
+			try {
+				Module.Read (this, (attribute, reader) => {
 					reader.ReadCustomAttributeSignature (attribute);
-					resolved = true;
-				} catch (ResolutionException) {
-					if (arguments != null)
-						arguments.Clear ();
-					if (fields != null)
-						fields.Clear ();
-					if (properties != null)
-						properties.Clear ();
+					return this;
+				});
 
-					resolved = false;
-				}
-				return this;
-			});
+				resolved = true;
+			} catch (ResolutionException) {
+				if (arguments != null)
+					arguments.Clear ();
+				if (fields != null)
+					fields.Clear ();
+				if (properties != null)
+					properties.Clear ();
+
+				resolved = false;
+			}
 		}
+		
+	    //wicky.patch.start: add IsResolvable
+        bool? isResolvable = null;
+        public bool IsResolvable
+        {
+            get
+            {
+                if (isResolvable == null)
+                {
+                    try
+                    {
+                        isResolvable = this.Constructor.Parameters.Count == this.ConstructorArguments.Count;
+                    }
+                    catch (System.IO.FileNotFoundException)
+                    {
+                        isResolvable = false;
+                    }
+                    catch (System.InvalidOperationException)
+                    {
+                        isResolvable = false;
+                    }
+                }
+                return isResolvable.Value;
+            }
+        }
+        //wicky.patch.end
 	}
 
 	static partial class Mixin {

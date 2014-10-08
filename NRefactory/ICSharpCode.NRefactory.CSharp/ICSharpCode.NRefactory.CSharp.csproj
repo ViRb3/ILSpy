@@ -500,20 +500,17 @@
     <Compile Include="Refactoring\CodeIssues\ParameterCanBeDemotedIssue\SupportsIndexingCriterion.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Mono.Cecil\Mono.Cecil.csproj">
+      <Project>{d68133bd-1e63-496e-9ede-4fbdbf77b486}</Project>
+      <Name>Mono.Cecil</Name>
+    </ProjectReference>
     <ProjectReference Include="..\ICSharpCode.NRefactory\ICSharpCode.NRefactory.csproj">
       <Project>{3B2A5653-EC97-4001-BB9B-D90F1AF2C371}</Project>
       <Name>ICSharpCode.NRefactory</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.Targets" />
-  <ItemGroup>
-    <Folder Include="Completion\" />
-    <Folder Include="Refactoring\CodeIssues\" />
-    <Folder Include="Refactoring\CodeIssues\InconsistentNamingIssue\" />
-    <Folder Include="Refactoring\CodeActions\ExtractMethod\" />
-    <Folder Include="Refactoring\CodeActions\ConvertToInitializer\" />
-    <Folder Include="Refactoring\CodeIssues\FormatStringIssues\" />
-  </ItemGroup>
+  <ItemGroup />
   <ProjectExtensions>
     <MonoDevelop>
       <Properties>

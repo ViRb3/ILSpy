@@ -30,6 +30,36 @@ namespace Mono.Cecil.Cil {
 
 	public static class OpCodes {
 
+        //wicky.patch.start
+        static OpCodes()
+        {
+            //Start from first index to ignore nop (onebyte)
+            for (int i = 1; i < OneByteOpCode.Length; i++)
+            {
+                //arglist: FE 00
+                if (OneByteOpCode[i].Op2 == 0x00 && OneByteOpCode[i].Code != Code.Arglist)
+                {
+                    OneByteOpCode[i] = new OpCode(
+                        0xff << 0 | (byte)i << 8 | (byte)Code.Unused << 16 | (byte)FlowControl.Next << 24,
+                        (byte)OpCodeType.Primitive << 0 | (byte)OperandType.InlineNone << 8 | (byte)StackBehaviour.Pop0 << 16 | (byte)StackBehaviour.Push0 << 24);
+                }
+            }
+
+            //Start from first index to ignore arglist (twobyte)
+            for (int i = 1; i < TwoBytesOpCode.Length; i++)
+            {
+                //arglist: FE 00
+                if (TwoBytesOpCode[i].Op2 == 0x00 && TwoBytesOpCode[i].Code != Code.Arglist)
+                {
+                    TwoBytesOpCode[i] = new OpCode(
+                    0xfe << 0 | (byte)i << 8 | (byte)Code.Unused << 16 | (byte)FlowControl.Next << 24,
+                    (byte)OpCodeType.Primitive << 0 | (byte)OperandType.InlineNone << 8 | (byte)StackBehaviour.Pop0 << 16 | (byte)StackBehaviour.Push0 << 24);
+                }
+            }
+
+        }
+        //wicky.patch.end
+
 		internal static readonly OpCode [] OneByteOpCode = new OpCode [0xe0 + 1];
 		internal static readonly OpCode [] TwoBytesOpCode = new OpCode [0x1e + 1];
 

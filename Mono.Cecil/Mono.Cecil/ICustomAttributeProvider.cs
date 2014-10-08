@@ -27,6 +27,7 @@
 //
 
 using System;
+
 using Mono.Collections.Generic;
 
 namespace Mono.Cecil {
@@ -49,12 +50,11 @@ namespace Mono.Cecil {
 
 		public static Collection<CustomAttribute> GetCustomAttributes (
 			this ICustomAttributeProvider self,
-			ref Collection<CustomAttribute> variable,
 			ModuleDefinition module)
 		{
 			return module.HasImage ()
-				? module.Read (ref variable, self, (provider, reader) => reader.ReadCustomAttributes (provider))
-				: variable = new Collection<CustomAttribute>();
+				? module.Read (self, (provider, reader) => reader.ReadCustomAttributes (provider))
+				: new Collection<CustomAttribute> ();
 		}
 	}
 }

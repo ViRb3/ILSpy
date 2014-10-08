@@ -76,6 +76,13 @@ namespace Mono.Cecil {
 
 		internal ElementType etype = ElementType.None;
 
+        //wicky.patch.start: add ElementTypeIntValue
+        public int ElementTypeIntValue
+        {
+            get { return (int)etype; }
+        }
+        //wicky.patch.end
+
 		string fullname;
 
 		protected Collection<GenericParameter> generic_parameters;
@@ -147,6 +154,15 @@ namespace Mono.Cecil {
 
 				return scope;
 			}
+			set {
+				var declaring_type = this.DeclaringType;
+				if (declaring_type != null) {
+					declaring_type.Scope = value;
+					return;
+				}
+
+				scope = value;
+			}
 		}
 
 		public bool IsNested {
@@ -154,8 +170,16 @@ namespace Mono.Cecil {
 		}
 
 		public override TypeReference DeclaringType {
-			get { return base.DeclaringType; }
+            get { return base.DeclaringType; }
 			set {
+                //wicky.patch.start: avoid recursive declaringtype of some obfuscated assemblies,
+                //currently only one level checking
+                if (value != null)
+                {
+                    if (this == value || this == value.DeclaringType)
+                        return;
+                }
+                //wicky.patch.end
 				base.DeclaringType = value;
 				fullname = null;
 			}

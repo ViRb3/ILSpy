@@ -317,5 +317,18 @@ namespace Mono.Cecil.Cil {
 
 			return new Instruction (opcode, parameter);
 		}
+
+        //wicky.patch.start: add Index property
+        /// <summary>
+        /// it's for temporary use only, isn't maintained when add/remove instruction
+        /// </summary>
+        private int _index = -1;
+        public int Index
+        {
+            get { return _index; }
+            set { _index = value; }
+        }
+        //wicky.patch.end
+
 	}
 }

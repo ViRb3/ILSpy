@@ -27,13 +27,24 @@
 //
 
 using System;
-using System.Threading;
 
 using Mono.Collections.Generic;
+
+//wicky.patch.start: add CodeRVA
+using RVA = System.UInt32;
+//wicky.patch.end
 
 namespace Mono.Cecil.Cil {
 
 	public sealed class MethodBody : IVariableDefinitionProvider {
+
+        //wicky.patch.start: add CodeRVA
+        internal RVA codeRva;
+        public int CodeRVA
+        {
+            get { return (int)codeRva; }
+        }
+        //wicky.patch.end
 
 		readonly internal MethodDefinition method;
 
@@ -104,21 +115,16 @@ namespace Mono.Cecil.Cil {
 				if (!method.HasThis)
 					return null;
 
-				if (this_parameter == null)
-					Interlocked.CompareExchange (ref this_parameter, ThisParameterFor (method), null);
+				if (this_parameter != null)
+					return this_parameter;
 
-				return this_parameter;
+				var declaring_type = method.DeclaringType;
+				var type = declaring_type.IsValueType || declaring_type.IsPrimitive
+					? new PointerType (declaring_type)
+					: declaring_type as TypeReference;
+
+				return this_parameter = new ParameterDefinition (type, method);
 			}
-		}
-
-		static ParameterDefinition ThisParameterFor (MethodDefinition method)
-		{
-			var declaring_type = method.DeclaringType;
-			var type = declaring_type.IsValueType || declaring_type.IsPrimitive
-				? new PointerType (declaring_type)
-				: declaring_type as TypeReference;
-
-			return new ParameterDefinition (type, method);
 		}
 
 		public MethodBody (MethodDefinition method)
